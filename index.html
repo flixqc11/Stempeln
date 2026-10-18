@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Stempeluhr</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#e8ecef;--card:#fff;--ink:#1b2733;--muted:#66757f;--line:#d3dade;--in:#1f8a5b;--out:#c4452c;--brk:#b9770e;--on:#fff;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12181d;--card:#1b242b;--ink:#e8eef2;--muted:#93a3ad;--line:#2c3944;--in:#3fb283;--out:#e0664d;--brk:#e0a042;--on:#0d1317;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#12181d;--card:#1b242b;--ink:#e8eef2;--muted:#93a3ad;--line:#2c3944;--in:#3fb283;--out:#e0664d;--brk:#e0a042;--on:#0d1317;color-scheme:dark}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:520px;margin:0 auto;padding:20px 16px 40px}
+.clock{text-align:center;padding:12px 0 8px}
+.time{font-size:3.6rem;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.date{color:var(--muted)}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-top:14px}
+.status{display:flex;align-items:center;gap:10px;font-weight:600}
+.dot{width:12px;height:12px;border-radius:50%;background:var(--muted)}
+.running .dot{background:var(--in)}
+.onbreak .dot{background:var(--brk)}
+.since{color:var(--muted);margin:4px 0 0 22px;min-height:1.4em;font-variant-numeric:tabular-nums}
+button{font-family:inherit;cursor:pointer}
+.big{display:block;width:100%;margin-top:12px;padding:18px;border:0;border-radius:12px;font-size:1.25rem;font-weight:700;color:var(--on);background:var(--in)}
+.running .big,.onbreak .big{background:var(--out)}
+.brk{display:none;width:100%;margin-top:10px;padding:14px;border:2px solid var(--brk);border-radius:12px;background:none;color:var(--ink);font-size:1.05rem;font-weight:600}
+.running .brk,.onbreak .brk{display:block}
+h2{font-size:1rem;margin:0 0 8px}
+ul{list-style:none;margin:0;padding:0}
+li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--line);font-variant-numeric:tabular-nums}
+li:first-child{border-top:0}
+li small{display:block;color:var(--muted)}
+.dur{font-weight:600;white-space:nowrap;margin-left:auto}
+.ib{border:0;background:none;color:var(--muted);font-size:1.1rem;padding:6px 9px;border-radius:8px}
+.empty{color:var(--muted);margin:0}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.btn{padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:none;color:var(--ink);font-size:.95rem}
+.btn.pri{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+label{display:block;margin-top:12px;font-size:.9rem;color:var(--muted)}
+input[type=number],input[type=date],input[type=month]{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+.two{display:flex;gap:10px}
+.two>div{flex:1}
+details summary{cursor:pointer;font-weight:600}
+textarea{width:100%;height:130px;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:12px/1.4 ui-monospace,Menlo,Consolas,monospace}
+.err{color:var(--out);margin:8px 0 0;min-height:1.2em}
+[hidden]{display:none!important}
+button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+</style>
+</head>
+<body>
+<main id="app">
+  <div class="clock"><div class="time" id="time">--:--:--</div><div class="date" id="date"></div></div>
+
+  <section class="panel" id="panel">
+    <div class="status"><span class="dot"></span><span id="state">Nicht eingestempelt</span></div>
+    <p class="since" id="since"></p>
+    <button class="big" id="btn" type="button">Einstempeln</button>
+    <button class="brk" id="brk" type="button">Pause starten</button>
+  </section>
+
+  <section class="panel">
+    <h2>Tage (Soll 8 Std, Mo–Fr)</h2>
+    <ul id="days"></ul>
+    <label for="pickDay">Anderen Tag bearbeiten</label>
+    <input type="date" id="pickDay">
+  </section>
+
+  <section class="panel" id="dayForm" hidden>
+    <h2 id="dayTitle">Tag bearbeiten</h2>
+    <label>Netto-Arbeitszeit</label>
+    <div class="two">
+      <div><input type="number" id="dh" min="0" max="24" step="1" placeholder="Std" aria-label="Stunden"></div>
+      <div><input type="number" id="dm" min="0" max="59" step="1" placeholder="Min" aria-label="Minuten"></div>
+    </div>
+    <div class="row">
+      <button class="btn pri" id="dsave" type="button">Speichern</button>
+      <button class="btn" id="dreset" type="button">Automatisch berechnen</button>
+      <button class="btn" id="ddel" type="button">Tag löschen</button>
+      <button class="btn" id="dcancel" type="button">Abbrechen</button>
+    </div>
+    <p class="err" id="derr"></p>
+  </section>
+
+  <section class="panel">
+    <h2>Monate</h2>
+    <ul id="months"></ul>
+    <label for="pickMon">Anderen Monat bearbeiten</label>
+    <input type="month" id="pickMon">
+  </section>
+
+  <section class="panel" id="monForm" hidden>
+    <h2 id="monTitle">Monat bearbeiten</h2>
+    <label>Netto-Arbeitszeit (leer = automatisch aus den Tagen)</label>
+    <div class="two">
+      <div><input type="number" id="mih" min="0" max="744" step="1" placeholder="Std" aria-label="Netto Stunden"></div>
+      <div><input type="number" id="mim" min="0" max="59" step="1" placeholder="Min" aria-label="Netto Minuten"></div>
+    </div>
+    <label>Soll (leer = automatisch, 8 Std pro Werktag Mo–Fr)</label>
+    <div class="two">
+      <div><input type="number" id="msh" min="0" max="744" step="1" placeholder="Std" aria-label="Soll Stunden"></div>
+      <div><input type="number" id="msm" min="0" max="59" step="1" placeholder="Min" aria-label="Soll Minuten"></div>
+    </div>
+    <div class="row">
+      <button class="btn pri" id="msave" type="button">Speichern</button>
+      <button class="btn" id="mcancel" type="button">Abbrechen</button>
+    </div>
+    <p class="err" id="merr"></p>
+  </section>
+
+  <details class="panel">
+    <summary>Sicherung</summary>
+    <p class="empty" style="margin-top:8px">Alle Daten als Text speichern (z. B. in Notizen) und bei Bedarf wieder laden.</p>
+    <div class="row"><button class="btn pri" id="bkmake" type="button">Sicherung erstellen</button><button class="btn" id="bkcopy" type="button">Kopieren</button><button class="btn" id="bkload" type="button">Sicherung laden</button></div>
+    <textarea id="bk" placeholder="Zum Laden den Sicherungstext hier einfügen" aria-label="Sicherungstext"></textarea>
+    <p class="empty" id="bkmsg"></p>
+  </details>
+</main>
+
+<script>
+var KEY="stempeluhr-v2", S={entries:[],auto:true,over:{},mon:{}}, SOLL=8*3600000;
+function ensure(){
+  if(!Array.isArray(S.entries))S.entries=[];
+  if(!S.over||typeof S.over!=="object")S.over={};
+  if(!S.mon||typeof S.mon!=="object")S.mon={};
+  if(S.auto===undefined)S.auto=true;
+}
+function load(){try{var r=localStorage.getItem(KEY);if(r){var d=JSON.parse(r);if(d&&Array.isArray(d.entries))S=d;}}catch(e){}ensure();}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
+function $(i){return document.getElementById(i);}
+function pad(n){return (n<10?"0":"")+n;}
+function hm(ms){var m=Math.max(0,Math.round(ms/60000));return Math.floor(m/60)+":"+pad(m%60);}
+function shm(ms){return (ms<0?"−":"+")+hm(Math.abs(ms));}
+function hms(ms){var s=Math.max(0,Math.floor(ms/1000));return Math.floor(s/3600)+":"+pad(Math.floor(s%3600/60))+":"+pad(s%60);}
+function clk(ms){var d=new Date(ms);return pad(d.getHours())+":"+pad(d.getMinutes());}
+function dayStart(ms){var d=new Date(ms);return new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime();}
+function mkey(ms){var d=new Date(ms);return d.getFullYear()+"-"+pad(d.getMonth()+1);}
+function pd(s){var p=(s||"").split("-");return p.length===3?new Date(+p[0],+p[1]-1,+p[2]).getTime():NaN;}
+function dlabel(k){return new Date(k).toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",month:"2-digit",year:"numeric"});}
+function monLabel(key){var p=key.split("-");return new Date(+p[0],+p[1]-1,1).toLocaleDateString("de-DE",{month:"long",year:"numeric"});}
+
+/* Soll: 8 Stunden von Montag bis Freitag */
+function sollDay(k){return ((new Date(k).getDay()+6)%7)<5?SOLL:0;}
+function sollMonth(key,upto){
+  var p=key.split("-"),y=+p[0],mo=+p[1]-1,last=new Date(y,mo+1,0).getDate(),lim=upto?dayStart(upto):null,t=0;
+  for(var d=1;d<=last;d++){var k=new Date(y,mo,d).getTime();if(lim!==null&&k>lim)break;t+=sollDay(k);}
+  return t;
+}
+
+/* Arbeitszeit */
+function cur(){for(var i=0;i<S.entries.length;i++)if(S.entries[i].end===null)return S.entries[i];return null;}
+function brk(e,now){return (e.pause||0)+(e.pauseStart?now-e.pauseStart:0);}
+function deduct(e,now){
+  var end=e.end===null?now:e.end,b=brk(e,now),work=end-e.start-b,min=30*60000;
+  if(S.auto&&work>6*3600000&&b<min)return Math.min(min-b,work);
+  return 0;
+}
+function net(e,now){var end=e.end===null?now:e.end;return Math.max(0,end-e.start-brk(e,now)-deduct(e,now));}
+function dayMap(now){
+  var m={};
+  S.entries.forEach(function(e){var k=dayStart(e.start);if(!m[k])m[k]={work:0,pause:0,manual:false};m[k].work+=net(e,now);m[k].pause+=brk(e,now)+deduct(e,now);});
+  Object.keys(S.over).forEach(function(k){k=+k;if(!m[k])m[k]={work:0,pause:0,manual:false};m[k].work=S.over[k];m[k].manual=true;});
+  var t=dayStart(now);if(!m[t])m[t]={work:0,pause:0,manual:false};
+  return m;
+}
+function monData(now){
+  var dm=dayMap(now),m={},c=mkey(now);
+  Object.keys(dm).forEach(function(k){var key=mkey(+k);if(!m[key])m[key]={calc:0};m[key].calc+=dm[k].work;});
+  Object.keys(S.mon).forEach(function(key){if(!m[key])m[key]={calc:0};});
+  if(!m[c])m[c]={calc:0};
+  Object.keys(m).forEach(function(key){
+    var o=S.mon[key]||{},v=m[key];
+    v.manual=o.ist!=null;v.sollManual=o.soll!=null;
+    v.ist=v.manual?o.ist:v.calc;
+    v.sollAuto=sollMonth(key,null);
+    v.soll=v.sollManual?o.soll:v.sollAuto;
+    v.toDate=!v.sollManual&&key===c;
+    v.cmp=v.toDate?sollMonth(key,now):v.soll;
+  });
+  return m;
+}
+
+/* Stempeln */
+$("btn").onclick=function(){
+  var r=cur(),now=Date.now();
+  if(r){if(r.pauseStart){r.pause=(r.pause||0)+now-r.pauseStart;r.pauseStart=null;}r.end=now;}
+  else S.entries.push({start:now,end:null,pause:0,pauseStart:null});
+  save();render();
+};
+$("brk").onclick=function(){
+  var r=cur(),now=Date.now();if(!r)return;
+  if(r.pauseStart){r.pause=(r.pause||0)+now-r.pauseStart;r.pauseStart=null;}else r.pauseStart=now;
+  save();render();
+};
+
+/* Anzeige */
+var sigD="",sigM="";
+function fillList(ul,rows,sigName){
+  var sig=JSON.stringify(rows.map(function(r){return [r.t,r.s,r.d];}));
+  if(sigName==="d"){if(sig===sigD)return;sigD=sig;}else{if(sig===sigM)return;sigM=sig;}
+  ul.innerHTML="";
+  rows.forEach(function(r){
+    var li=document.createElement("li"),left=document.createElement("div"),t=document.createElement("span"),s=document.createElement("small");
+    t.textContent=r.t;s.textContent=r.s;left.appendChild(t);left.appendChild(s);
+    var dur=document.createElement("span");dur.className="dur";dur.textContent=r.d;
+    var ed=document.createElement("button");ed.className="ib";ed.type="button";ed.textContent="✎";ed.setAttribute("aria-label","Bearbeiten");
+    ed.onclick=r.edit;
+    li.appendChild(left);li.appendChild(dur);li.appendChild(ed);ul.appendChild(li);
+  });
+}
+function renderLists(now){
+  var dm=dayMap(now),today=dayStart(now);
+  var dk=Object.keys(dm).map(Number).sort(function(a,b){return b-a;}).slice(0,62);
+  fillList($("days"),dk.map(function(k){
+    var v=dm[k],so=sollDay(k),parts=[];
+    parts.push(so>0?"Soll "+hm(so)+" · "+shm(v.work-so):"Kein Soll");
+    if(v.manual)parts.push("manuell");else if(v.pause>0)parts.push("Pause "+Math.round(v.pause/60000)+" Min");
+    return {t:dlabel(k)+(k===today?" (heute)":""),s:parts.join(" · "),d:hm(v.work),edit:function(){openDay(k,v);}};
+  }),"d");
+  var md=monData(now),mk=Object.keys(md).sort().reverse();
+  fillList($("months"),mk.map(function(key){
+    var v=md[key],parts=[];
+    parts.push("Soll "+hm(v.soll)+(v.sollManual?" (manuell)":"")+" · "+shm(v.ist-v.cmp)+(v.toDate?" bis heute":""));
+    if(v.manual)parts.push("Netto manuell");
+    return {t:monLabel(key),s:parts.join(" · "),d:hm(v.ist),edit:function(){openMon(key,v);}};
+  }),"m");
+}
+function render(){
+  var d=new Date(),now=d.getTime(),r=cur();
+  $("time").textContent=pad(d.getHours())+":"+pad(d.getMinutes())+":"+pad(d.getSeconds());
+  $("date").textContent=d.toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+  $("panel").className="panel"+(r?(r.pauseStart?" onbreak":" running"):"");
+  $("state").textContent=r?(r.pauseStart?"In Pause":"Eingestempelt"):"Nicht eingestempelt";
+  $("since").textContent=r?(r.pauseStart?"Pause seit "+clk(r.pauseStart)+" Uhr · "+hms(now-r.pauseStart):"seit "+clk(r.start)+" Uhr · Arbeitszeit "+hms(net(r,now))):"";
+  $("btn").textContent=r?"Ausstempeln":"Einstempeln";
+  $("brk").textContent=r&&r.pauseStart?"Pause beenden":"Pause starten";
+  renderLists(now);
+}
+
+/* Tag bearbeiten */
+var editDay=null;
+function fill(hid,mid,ms){
+  if(ms===null||ms===undefined){$(hid).value="";$(mid).value="";return;}
+  var m=Math.round(ms/60000);$(hid).value=Math.floor(m/60);$(mid).value=m%60;
+}
+function parseHM(hid,mid,maxH){
+  var a=$(hid).value.trim(),b=$(mid).value.trim();
+  if(a===""&&b==="")return null;
+  var hh=parseInt(a||"0",10),mi=parseInt(b||"0",10);
+  if(isNaN(hh)||isNaN(mi)||hh<0||hh>maxH||mi<0||mi>59)return NaN;
+  return (hh*60+mi)*60000;
+}
+function openDay(k,v){
+  editDay=k;$("derr").textContent="";
+  $("dayTitle").textContent="Netto-Arbeitszeit am "+dlabel(k);
+  fill("dh","dm",v.work);
+  $("dayForm").hidden=false;$("dayForm").scrollIntoView({behavior:"smooth",block:"center"});
+}
+$("pickDay").onchange=function(){
+  var k=pd(this.value);this.value="";if(isNaN(k))return;
+  openDay(k,dayMap(Date.now())[k]||{work:0});
+};
+$("dcancel").onclick=function(){$("dayForm").hidden=true;};
+$("dsave").onclick=function(){
+  var v=parseHM("dh","dm",24);
+  if(v===null||v!==v){$("derr").textContent="Bitte Stunden (0–24) und Minuten (0–59) eingeben.";return;}
+  S.over[editDay]=v;save();$("dayForm").hidden=true;render();
+};
+$("dreset").onclick=function(){delete S.over[editDay];save();$("dayForm").hidden=true;render();};
+$("ddel").onclick=function(){
+  if(!confirm("Alle Stempelungen und Änderungen dieses Tages löschen?"))return;
+  S.entries=S.entries.filter(function(e){return dayStart(e.start)!==editDay;});
+  delete S.over[editDay];save();$("dayForm").hidden=true;render();
+};
+
+/* Monat bearbeiten */
+var editMon=null;
+function openMon(key,v){
+  editMon=key;$("merr").textContent="";
+  $("monTitle").textContent="Monat bearbeiten: "+monLabel(key);
+  fill("mih","mim",v.manual?v.ist:null);fill("msh","msm",v.sollManual?v.soll:null);
+  var c=Math.round(v.calc/60000),s=Math.round(v.sollAuto/60000);
+  $("mih").placeholder="Std ("+Math.floor(c/60)+")";$("mim").placeholder="Min ("+(c%60)+")";
+  $("msh").placeholder="Std ("+Math.floor(s/60)+")";$("msm").placeholder="Min ("+(s%60)+")";
+  $("monForm").hidden=false;$("monForm").scrollIntoView({behavior:"smooth",block:"center"});
+}
+$("pickMon").onchange=function(){
+  var k=this.value;this.value="";if(!k)return;
+  var v=monData(Date.now())[k];
+  if(!v){var sa=sollMonth(k,null);v={calc:0,ist:0,manual:false,soll:sa,sollAuto:sa,sollManual:false};}
+  openMon(k,v);
+};
+$("mcancel").onclick=function(){$("monForm").hidden=true;};
+$("msave").onclick=function(){
+  var ist=parseHM("mih","mim",744),soll=parseHM("msh","msm",744);
+  if(ist!==ist||soll!==soll){$("merr").textContent="Bitte Stunden (0–744) und Minuten (0–59) eingeben.";return;}
+  if(ist===null&&soll===null)delete S.mon[editMon];else S.mon[editMon]={ist:ist,soll:soll};
+  save();$("monForm").hidden=true;render();
+};
+
+/* Sicherung */
+$("bkmake").onclick=function(){$("bk").value=JSON.stringify(S);$("bkmsg").textContent="Sicherung erstellt. Tippe auf „Kopieren“ und füge sie z. B. in Notizen ein.";};
+$("bkcopy").onclick=function(){
+  var t=$("bk");if(!t.value)t.value=JSON.stringify(S);
+  t.select();t.setSelectionRange(0,t.value.length);var ok=false;
+  try{ok=document.execCommand("copy");}catch(e){}
+  $("bkmsg").textContent=ok?"Kopiert. Jetzt z. B. in Notizen einfügen.":"Bitte den Text markieren und manuell kopieren.";
+};
+$("bkload").onclick=function(){
+  var d=null;
+  try{d=JSON.parse($("bk").value);}catch(e){}
+  if(!d||!Array.isArray(d.entries)||!d.entries.every(function(e){return e&&typeof e.start==="number";})){
+    $("bkmsg").textContent="Der Text ist keine gültige Sicherung. Bitte den vollständigen Text einfügen.";return;
+  }
+  if(!confirm("Die aktuellen Daten auf diesem Gerät werden durch die Sicherung ersetzt. Fortfahren?"))return;
+  S=d;ensure();save();sigD="";sigM="";render();
+  $("bkmsg").textContent="Sicherung geladen: "+S.entries.length+" Einträge.";
+};
+
+load();render();setInterval(render,1000);
+</script>
+</body>
+</html>
