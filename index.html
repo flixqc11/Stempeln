@@ -53,6 +53,11 @@ li small{display:block;color:var(--muted)}
 label{display:block;margin-top:12px;font-size:.9rem;color:var(--muted)}
 input[type=number],input[type=date],input[type=month],input[type=time],select{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
 .two{display:flex;gap:10px}
+.wk{display:flex;gap:4px;margin-top:6px}
+.wk button{flex:1;min-width:0;padding:10px 0;border:1px solid var(--line);border-radius:8px;background:none;color:var(--muted);font:inherit;font-size:.9rem}
+.wk button.on{background:var(--in);border-color:var(--in);color:var(--on);font-weight:600}
+.chk{display:flex;align-items:center;gap:8px;margin-top:14px;color:var(--ink);font-size:1rem}
+.chk input{width:20px;height:20px}
 .saldo{font-size:2.2rem;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
 .saldo.pos{color:var(--in)}.saldo.neg{color:var(--out)}
 .hd{display:flex;align-items:center;justify-content:space-between}.hd h2{margin:0}
@@ -102,7 +107,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-vi
   </section>
 
   <section class="panel">
-    <h2>Tage (Soll 8 Std, Mo–Fr)</h2>
+    <h2 id="daysH">Tage</h2>
     <ul id="days"></ul>
     <label for="pickDay">Anderen Tag bearbeiten (auch Urlaub, Krank, Überstundenabbau)</label>
     <input type="date" id="pickDay">
@@ -148,7 +153,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-vi
       <div><input type="number" id="mih" min="0" max="744" step="1" placeholder="Std" aria-label="Netto Stunden"></div>
       <div><input type="number" id="mim" min="0" max="59" step="1" placeholder="Min" aria-label="Netto Minuten"></div>
     </div>
-    <label>Soll (leer = automatisch, 8 Std pro Werktag Mo–Fr)</label>
+    <label>Soll (leer = automatisch nach Arbeitszeitmodell)</label>
     <div class="two">
       <div><input type="number" id="msh" min="0" max="744" step="1" placeholder="Std" aria-label="Soll Stunden"></div>
       <div><input type="number" id="msm" min="0" max="59" step="1" placeholder="Min" aria-label="Soll Minuten"></div>
@@ -159,6 +164,26 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-vi
     </div>
     <p class="err" id="merr"></p>
   </section>
+
+  <details class="panel" id="planBox">
+    <summary>Arbeitszeitmodell</summary>
+    <label>Soll pro Arbeitstag</label>
+    <div class="two">
+      <div><input type="number" id="ph" min="0" max="24" step="1" placeholder="Std" aria-label="Soll Stunden pro Tag"></div>
+      <div><input type="number" id="pm" min="0" max="59" step="1" placeholder="Min" aria-label="Soll Minuten pro Tag"></div>
+    </div>
+    <label class="chk"><input type="checkbox" id="prot"> Zwei Wochen im Wechsel</label>
+    <label id="w1L">Arbeitstage</label>
+    <div class="wk" id="w1"></div>
+    <div id="w2Box">
+      <label>Arbeitstage Woche 2</label>
+      <div class="wk" id="w2"></div>
+      <label for="pcur" id="pcurL">Diese Woche ist</label>
+      <select id="pcur"><option value="0">Woche 1</option><option value="1">Woche 2</option></select>
+    </div>
+    <div class="row"><button class="btn pri" id="psave" type="button">Speichern</button></div>
+    <p class="empty" id="pmsg" style="margin-top:8px"></p>
+  </details>
 
   <details class="panel">
     <summary>Sicherung</summary>
@@ -176,6 +201,7 @@ function ensure(){
   if(!S.over||typeof S.over!=="object")S.over={};
   if(!S.mon||typeof S.mon!=="object")S.mon={};
   if(!S.abs||typeof S.abs!=="object")S.abs={};
+  if(!S.plan||!Array.isArray(S.plan.w)||S.plan.w.length!==2)S.plan={rot:false,min:SOLL,anchor:"",w:[[1,1,1,1,1,0,0],[1,1,1,1,0,0,1]]};
   if(typeof S.carry!=="number")S.carry=0;
   if(typeof S.start!=="string")S.start="";
   if(S.auto===undefined)S.auto=true;
@@ -209,7 +235,12 @@ function startDay(){
   }
   return _sd=s;
 }
-function sollDay(k){if(k<startDay())return 0;if(S.abs[k]==="urlaub"||S.abs[k]==="krank")return 0;return ((new Date(k).getDay()+6)%7)<5?SOLL:0;}
+var WD=["Mo","Di","Mi","Do","Fr","Sa","So"],WEEK=7*86400000;
+function monOf(k){var d=new Date(k);return new Date(d.getFullYear(),d.getMonth(),d.getDate()-((d.getDay()+6)%7)).getTime();}
+function weekIdx(k){var p=S.plan;if(!p.rot)return 0;var a=pd(p.anchor);if(isNaN(a))return 0;var n=Math.round((monOf(k)-monOf(a))/WEEK);return ((n%2)+2)%2;}
+function sollDay(k){if(k<startDay())return 0;if(S.abs[k]==="urlaub"||S.abs[k]==="krank")return 0;var p=S.plan;return p.w[weekIdx(k)][(new Date(k).getDay()+6)%7]?p.min:0;}
+function planText(){var p=S.plan;function ds(w){return w.map(function(x,i){return x?WD[i]:"";}).filter(Boolean).join(", ")||"keine";}
+  return "Soll "+hm(p.min)+(p.rot?" · 2-Wochen-Wechsel":" · "+ds(p.w[0]));}
 function sollMonth(key,upto){
   var p=key.split("-"),y=+p[0],mo=+p[1]-1,last=new Date(y,mo+1,0).getDate(),lim=upto?dayStart(upto):null,t=0;
   for(var d=1;d<=last;d++){var k=new Date(y,mo,d).getTime();if(lim!==null&&k>lim)break;t+=sollDay(k);}
@@ -279,6 +310,35 @@ $("csave").onclick=function(){
   save();sigD="";sigM="";$("saldoForm").hidden=true;render();
 };
 
+/* Arbeitszeitmodell */
+var pw=[[],[]];
+function drawWeek(i){
+  var box=$(i?"w2":"w1");box.innerHTML="";
+  WD.forEach(function(n,d){var b=document.createElement("button");b.type="button";b.textContent=n;
+    function upd(){b.className=pw[i][d]?"on":"";b.setAttribute("aria-pressed",pw[i][d]?"true":"false");}
+    b.onclick=function(){pw[i][d]=pw[i][d]?0:1;upd();};upd();box.appendChild(b);});
+}
+function showRot(){var r=$("prot").checked;$("w2Box").hidden=!r;$("w1L").textContent=r?"Arbeitstage Woche 1":"Arbeitstage";}
+function openPlan(){
+  var p=S.plan,m=Math.round(p.min/60000);
+  $("ph").value=Math.floor(m/60);$("pm").value=m%60;$("prot").checked=!!p.rot;
+  pw=[p.w[0].slice(),p.w[1].slice()];drawWeek(0);drawWeek(1);
+  $("pcur").value=String(weekIdx(Date.now()));
+  $("pcurL").textContent="Diese Woche (ab "+new Date(monOf(Date.now())).toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit"})+") ist";
+  showRot();$("pmsg").textContent="";
+}
+$("prot").onchange=showRot;
+$("planBox").addEventListener("toggle",function(){if(this.open)openPlan();});
+$("psave").onclick=function(){
+  var v=parseHM("ph","pm",24);
+  if(v===null||v!==v){$("pmsg").textContent="Bitte Stunden (0–24) und Minuten (0–59) eingeben.";return;}
+  var rot=$("prot").checked,mon=monOf(Date.now());
+  if(rot&&$("pcur").value==="1")mon=monOf(mon-3*86400000);
+  S.plan={rot:rot,min:v,anchor:iso(mon),w:[pw[0].slice(),pw[1].slice()]};
+  save();sigD="";sigM="";render();
+  $("pmsg").textContent="Gespeichert. "+planText()+".";
+};
+
 /* Stempeln */
 $("btn").onclick=function(){
   var r=cur(),now=Date.now();
@@ -343,6 +403,7 @@ function render(){
   var sa=saldo(now),se=$("saldo");
   se.textContent=shm(sa);se.className="saldo"+(Math.round(sa/60000)>0?" pos":Math.round(sa/60000)<0?" neg":"");
   $("saldoSub").textContent="Seit "+new Date(startDay()).toLocaleDateString("de-DE")+(S.carry?" · inkl. Übertrag "+shm(S.carry):"");
+  $("daysH").textContent="Tage ("+planText()+")";
   renderLists(now);
 }
 
