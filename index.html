@@ -37,6 +37,7 @@ li small{display:block;color:var(--muted)}
 .empty{color:var(--muted);margin:0}
 .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .btn{padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:none;color:var(--ink);font-size:.95rem}
+.btn.on{background:var(--brk);color:var(--on);border-color:var(--brk)}
 .btn.pri{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 label{display:block;margin-top:12px;font-size:.9rem;color:var(--muted)}
 input[type=number],input[type=date],input[type=month]{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
@@ -63,7 +64,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-vi
   <section class="panel">
     <h2>Tage (Soll 8 Std, Mo–Fr)</h2>
     <ul id="days"></ul>
-    <label for="pickDay">Anderen Tag bearbeiten</label>
+    <label for="pickDay">Anderen Tag bearbeiten (auch Urlaub, Krank, Frei)</label>
     <input type="date" id="pickDay">
   </section>
 
@@ -73,6 +74,13 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-vi
     <div class="two">
       <div><input type="number" id="dh" min="0" max="24" step="1" placeholder="Std" aria-label="Stunden"></div>
       <div><input type="number" id="dm" min="0" max="59" step="1" placeholder="Min" aria-label="Minuten"></div>
+    </div>
+    <label>Abwesenheit</label>
+    <div class="row" id="absRow" style="margin-top:6px">
+      <button class="btn" type="button" data-a="">Keine</button>
+      <button class="btn" type="button" data-a="urlaub">Urlaub</button>
+      <button class="btn" type="button" data-a="krank">Krank</button>
+      <button class="btn" type="button" data-a="frei">Frei</button>
     </div>
     <div class="row">
       <button class="btn pri" id="dsave" type="button">Speichern</button>
@@ -119,11 +127,12 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-vi
 </main>
 
 <script>
-var KEY="stempeluhr-v2", S={entries:[],auto:true,over:{},mon:{}}, SOLL=8*3600000;
+var KEY="stempeluhr-v2", S={entries:[],auto:true,over:{},mon:{},abs:{}}, SOLL=8*3600000;
 function ensure(){
   if(!Array.isArray(S.entries))S.entries=[];
   if(!S.over||typeof S.over!=="object")S.over={};
   if(!S.mon||typeof S.mon!=="object")S.mon={};
+  if(!S.abs||typeof S.abs!=="object")S.abs={};
   if(S.auto===undefined)S.auto=true;
 }
 function load(){try{var r=localStorage.getItem(KEY);if(r){var d=JSON.parse(r);if(d&&Array.isArray(d.entries))S=d;}}catch(e){}ensure();}
@@ -141,7 +150,8 @@ function dlabel(k){return new Date(k).toLocaleDateString("de-DE",{weekday:"short
 function monLabel(key){var p=key.split("-");return new Date(+p[0],+p[1]-1,1).toLocaleDateString("de-DE",{month:"long",year:"numeric"});}
 
 /* Soll: 8 Stunden von Montag bis Freitag */
-function sollDay(k){return ((new Date(k).getDay()+6)%7)<5?SOLL:0;}
+var ABS={urlaub:"Urlaub",krank:"Krank",frei:"Frei"};
+function sollDay(k){if(S.abs[k])return 0;return ((new Date(k).getDay()+6)%7)<5?SOLL:0;}
 function sollMonth(key,upto){
   var p=key.split("-"),y=+p[0],mo=+p[1]-1,last=new Date(y,mo+1,0).getDate(),lim=upto?dayStart(upto):null,t=0;
   for(var d=1;d<=last;d++){var k=new Date(y,mo,d).getTime();if(lim!==null&&k>lim)break;t+=sollDay(k);}
@@ -161,6 +171,7 @@ function dayMap(now){
   var m={};
   S.entries.forEach(function(e){var k=dayStart(e.start);if(!m[k])m[k]={work:0,pause:0,manual:false};m[k].work+=net(e,now);m[k].pause+=brk(e,now)+deduct(e,now);});
   Object.keys(S.over).forEach(function(k){k=+k;if(!m[k])m[k]={work:0,pause:0,manual:false};m[k].work=S.over[k];m[k].manual=true;});
+  Object.keys(S.abs).forEach(function(k){k=+k;if(!m[k])m[k]={work:0,pause:0,manual:false};});
   var t=dayStart(now);if(!m[t])m[t]={work:0,pause:0,manual:false};
   return m;
 }
@@ -214,7 +225,7 @@ function renderLists(now){
   var dk=Object.keys(dm).map(Number).sort(function(a,b){return b-a;}).slice(0,62);
   fillList($("days"),dk.map(function(k){
     var v=dm[k],so=sollDay(k),parts=[];
-    parts.push(so>0?"Soll "+hm(so)+" · "+shm(v.work-so):"Kein Soll");
+    if(S.abs[k])parts.push(ABS[S.abs[k]]);else parts.push(so>0?"Soll "+hm(so)+" · "+shm(v.work-so):"Kein Soll");
     if(v.manual)parts.push("manuell");else if(v.pause>0)parts.push("Pause "+Math.round(v.pause/60000)+" Min");
     return {t:dlabel(k)+(k===today?" (heute)":""),s:parts.join(" · "),d:hm(v.work),edit:function(){openDay(k,v);}};
   }),"d");
@@ -222,6 +233,8 @@ function renderLists(now){
   fillList($("months"),mk.map(function(key){
     var v=md[key],parts=[];
     parts.push("Soll "+hm(v.soll)+(v.sollManual?" (manuell)":"")+" · "+shm(v.ist-v.cmp)+(v.toDate?" bis heute":""));
+    var cnt={};Object.keys(S.abs).forEach(function(k){if(mkey(+k)===key)cnt[S.abs[k]]=(cnt[S.abs[k]]||0)+1;});
+    ["urlaub","krank","frei"].forEach(function(a){if(cnt[a])parts.push(ABS[a]+" "+cnt[a]+(cnt[a]===1?" Tag":" Tage"));});
     if(v.manual)parts.push("Netto manuell");
     return {t:monLabel(key),s:parts.join(" · "),d:hm(v.ist),edit:function(){openMon(key,v);}};
   }),"m");
@@ -239,7 +252,9 @@ function render(){
 }
 
 /* Tag bearbeiten */
-var editDay=null;
+var editDay=null,editAbs="",editWork=0;
+function showAbs(){Array.prototype.forEach.call(document.querySelectorAll("#absRow .btn"),function(b){b.classList.toggle("on",b.getAttribute("data-a")===editAbs&&editAbs!=="");b.setAttribute("aria-pressed",b.getAttribute("data-a")===editAbs?"true":"false");});}
+Array.prototype.forEach.call(document.querySelectorAll("#absRow .btn"),function(b){b.onclick=function(){editAbs=b.getAttribute("data-a");showAbs();};});
 function fill(hid,mid,ms){
   if(ms===null||ms===undefined){$(hid).value="";$(mid).value="";return;}
   var m=Math.round(ms/60000);$(hid).value=Math.floor(m/60);$(mid).value=m%60;
@@ -252,7 +267,7 @@ function parseHM(hid,mid,maxH){
   return (hh*60+mi)*60000;
 }
 function openDay(k,v){
-  editDay=k;$("derr").textContent="";
+  editDay=k;$("derr").textContent="";editAbs=S.abs[k]||"";editWork=v.work||0;showAbs();
   $("dayTitle").textContent="Netto-Arbeitszeit am "+dlabel(k);
   fill("dh","dm",v.work);
   $("dayForm").hidden=false;$("dayForm").scrollIntoView({behavior:"smooth",block:"center"});
@@ -264,14 +279,16 @@ $("pickDay").onchange=function(){
 $("dcancel").onclick=function(){$("dayForm").hidden=true;};
 $("dsave").onclick=function(){
   var v=parseHM("dh","dm",24);
-  if(v===null||v!==v){$("derr").textContent="Bitte Stunden (0–24) und Minuten (0–59) eingeben.";return;}
-  S.over[editDay]=v;save();$("dayForm").hidden=true;render();
+  if(v!==v||(v===null&&!editAbs)){$("derr").textContent="Bitte Stunden (0–24) und Minuten (0–59) eingeben.";return;}
+  if(v!==null&&(S.over[editDay]!==undefined||Math.round(v/60000)!==Math.round(editWork/60000)))S.over[editDay]=v;
+  if(editAbs)S.abs[editDay]=editAbs;else delete S.abs[editDay];
+  save();$("dayForm").hidden=true;render();
 };
 $("dreset").onclick=function(){delete S.over[editDay];save();$("dayForm").hidden=true;render();};
 $("ddel").onclick=function(){
   if(!confirm("Alle Stempelungen und Änderungen dieses Tages löschen?"))return;
   S.entries=S.entries.filter(function(e){return dayStart(e.start)!==editDay;});
-  delete S.over[editDay];save();$("dayForm").hidden=true;render();
+  delete S.over[editDay];delete S.abs[editDay];save();$("dayForm").hidden=true;render();
 };
 
 /* Monat bearbeiten */
