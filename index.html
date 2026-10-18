@@ -64,7 +64,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-vi
   <section class="panel">
     <h2>Tage (Soll 8 Std, Mo–Fr)</h2>
     <ul id="days"></ul>
-    <label for="pickDay">Anderen Tag bearbeiten (auch Urlaub, Krank, Frei)</label>
+    <label for="pickDay">Anderen Tag bearbeiten (auch Urlaub, Krank, Überstundenabbau)</label>
     <input type="date" id="pickDay">
   </section>
 
@@ -80,7 +80,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-vi
       <button class="btn" type="button" data-a="">Keine</button>
       <button class="btn" type="button" data-a="urlaub">Urlaub</button>
       <button class="btn" type="button" data-a="krank">Krank</button>
-      <button class="btn" type="button" data-a="frei">Frei</button>
+      <button class="btn" type="button" data-a="frei">Überstundenabbau</button>
     </div>
     <div class="row">
       <button class="btn pri" id="dsave" type="button">Speichern</button>
@@ -150,8 +150,8 @@ function dlabel(k){return new Date(k).toLocaleDateString("de-DE",{weekday:"short
 function monLabel(key){var p=key.split("-");return new Date(+p[0],+p[1]-1,1).toLocaleDateString("de-DE",{month:"long",year:"numeric"});}
 
 /* Soll: 8 Stunden von Montag bis Freitag */
-var ABS={urlaub:"Urlaub",krank:"Krank",frei:"Frei"};
-function sollDay(k){if(S.abs[k])return 0;return ((new Date(k).getDay()+6)%7)<5?SOLL:0;}
+var ABS={urlaub:"Urlaub",krank:"Krank",frei:"Überstundenabbau"};
+function sollDay(k){if(S.abs[k]==="urlaub"||S.abs[k]==="krank")return 0;return ((new Date(k).getDay()+6)%7)<5?SOLL:0;}
 function sollMonth(key,upto){
   var p=key.split("-"),y=+p[0],mo=+p[1]-1,last=new Date(y,mo+1,0).getDate(),lim=upto?dayStart(upto):null,t=0;
   for(var d=1;d<=last;d++){var k=new Date(y,mo,d).getTime();if(lim!==null&&k>lim)break;t+=sollDay(k);}
@@ -225,7 +225,7 @@ function renderLists(now){
   var dk=Object.keys(dm).map(Number).sort(function(a,b){return b-a;}).slice(0,62);
   fillList($("days"),dk.map(function(k){
     var v=dm[k],so=sollDay(k),parts=[];
-    if(S.abs[k])parts.push(ABS[S.abs[k]]);else parts.push(so>0?"Soll "+hm(so)+" · "+shm(v.work-so):"Kein Soll");
+    if(S.abs[k]==="urlaub"||S.abs[k]==="krank")parts.push(ABS[S.abs[k]]);else parts.push((S.abs[k]?ABS[S.abs[k]]+" · ":"")+(so>0?"Soll "+hm(so)+" · "+shm(v.work-so):"Kein Soll"));
     if(v.manual)parts.push("manuell");else if(v.pause>0)parts.push("Pause "+Math.round(v.pause/60000)+" Min");
     return {t:dlabel(k)+(k===today?" (heute)":""),s:parts.join(" · "),d:hm(v.work),edit:function(){openDay(k,v);}};
   }),"d");
