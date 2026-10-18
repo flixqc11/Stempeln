@@ -30,6 +30,9 @@ main{max-width:520px;margin:0 auto;padding:20px 16px 40px}
 .running .dot{background:var(--in)}
 .onbreak .dot{background:var(--brk)}
 .since{color:var(--muted);margin:4px 0 0 22px;min-height:1.4em;font-variant-numeric:tabular-nums}
+.rest{margin:2px 0 0 22px;color:var(--muted);font-variant-numeric:tabular-nums}
+.rest.big2{margin:10px 0 0;text-align:center;font-size:2.4rem;font-weight:700;color:var(--brk)}
+.rest.over{color:var(--out)}
 button{font-family:inherit;cursor:pointer}
 .big{display:block;width:100%;margin-top:12px;padding:18px;border:0;border-radius:12px;font-size:1.25rem;font-weight:700;color:var(--on);background:var(--in)}
 .running .big,.onbreak .big{background:var(--out)}
@@ -72,6 +75,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-vi
   <section class="panel" id="panel">
     <div class="status"><span class="dot"></span><span id="state">Nicht eingestempelt</span></div>
     <p class="since" id="since"></p>
+    <p class="rest" id="rest" hidden></p>
     <button class="big" id="btn" type="button">Einstempeln</button>
     <button class="brk" id="brk" type="button">Pause starten</button>
   </section>
@@ -322,13 +326,18 @@ function renderLists(now){
     return {t:monLabel(key),s:parts.join(" · "),d:hm(v.ist),edit:function(){openMon(key,v);}};
   }),"m");
 }
+var PAUSE=30*60000;
+function ms2(ms){var s=Math.max(0,Math.ceil(ms/1000));return Math.floor(s/60)+":"+pad(s%60);}
+function restPause(now){var t=dayStart(now),b=0;S.entries.forEach(function(e){if(dayStart(e.start)===t)b+=brk(e,now);});return PAUSE-b;}
 function render(){
   var d=new Date(),now=d.getTime(),r=cur();
   $("time").textContent=pad(d.getHours())+":"+pad(d.getMinutes())+":"+pad(d.getSeconds());
   $("date").textContent=d.toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
   $("panel").className="panel"+(r?(r.pauseStart?" onbreak":" running"):"");
   $("state").textContent=r?(r.pauseStart?"In Pause":"Eingestempelt"):"Nicht eingestempelt";
-  $("since").textContent=r?(r.pauseStart?"Pause seit "+clk(r.pauseStart)+" Uhr · "+hms(now-r.pauseStart):"seit "+clk(r.start)+" Uhr · Arbeitszeit "+hms(net(r,now))):"";
+  var rp=restPause(now),rpt=rp>=0?"Restpause "+ms2(rp):"Pause überzogen +"+ms2(-rp);
+  $("since").textContent=r?(r.pauseStart?"Pause seit "+clk(r.pauseStart)+" Uhr":"seit "+clk(r.start)+" Uhr · Arbeitszeit "+hms(net(r,now))):"";
+  var rb=$("rest");rb.hidden=!r;rb.textContent=r?rpt:"";rb.className="rest"+(r&&r.pauseStart?" big2":"")+(rp<0?" over":"");
   $("btn").textContent=r?"Ausstempeln":"Einstempeln";
   $("brk").textContent=r&&r.pauseStart?"Pause beenden":"Pause starten";
   var sa=saldo(now),se=$("saldo");
