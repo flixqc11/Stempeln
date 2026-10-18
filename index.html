@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Stempeluhr</title>
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Stempeluhr">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#1f8a5b">
 <style>
 :root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
 --bg:#e8ecef;--card:#fff;--ink:#1b2733;--muted:#66757f;--line:#d3dade;--in:#1f8a5b;--out:#c4452c;--brk:#b9770e;--on:#fff;color-scheme:light}
@@ -40,8 +48,15 @@ li small{display:block;color:var(--muted)}
 .btn.on{background:var(--brk);color:var(--on);border-color:var(--brk)}
 .btn.pri{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 label{display:block;margin-top:12px;font-size:.9rem;color:var(--muted)}
-input[type=number],input[type=date],input[type=month]{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+input[type=number],input[type=date],input[type=month],input[type=time],select{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
 .two{display:flex;gap:10px}
+.saldo{font-size:2.2rem;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+.saldo.pos{color:var(--in)}.saldo.neg{color:var(--out)}
+.hd{display:flex;align-items:center;justify-content:space-between}.hd h2{margin:0}
+.ent{display:flex;gap:6px;align-items:flex-end;margin-top:8px}
+.ent>div{flex:1;min-width:0}.ent>div.p{flex:.7}
+.ent small{display:block;color:var(--muted);font-size:.75rem;margin-bottom:2px}
+.ent input{width:100%;padding:9px 6px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit;min-width:0}
 .two>div{flex:1}
 details summary{cursor:pointer;font-weight:600}
 textarea{width:100%;height:130px;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:12px/1.4 ui-monospace,Menlo,Consolas,monospace}
@@ -62,6 +77,27 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-vi
   </section>
 
   <section class="panel">
+    <div class="hd"><h2>Überstundenkonto</h2><button class="ib" id="saldoEd" type="button" aria-label="Überstundenkonto einstellen">✎</button></div>
+    <div class="saldo" id="saldo">+0:00</div>
+    <p class="empty" id="saldoSub"></p>
+    <div id="saldoForm" hidden>
+      <label>Übertrag (Stand vor Beginn der Erfassung)</label>
+      <div class="two">
+        <div><select id="csg" aria-label="Vorzeichen"><option value="1">Plus</option><option value="-1">Minus</option></select></div>
+        <div><input type="number" id="cch" min="0" max="9999" step="1" placeholder="Std" aria-label="Übertrag Stunden"></div>
+        <div><input type="number" id="ccm" min="0" max="59" step="1" placeholder="Min" aria-label="Übertrag Minuten"></div>
+      </div>
+      <label for="cstart">Erfassung ab (davor zählt kein Soll)</label>
+      <input type="date" id="cstart">
+      <div class="row">
+        <button class="btn pri" id="csave" type="button">Speichern</button>
+        <button class="btn" id="ccancel" type="button">Abbrechen</button>
+      </div>
+      <p class="err" id="cerr"></p>
+    </div>
+  </section>
+
+  <section class="panel">
     <h2>Tage (Soll 8 Std, Mo–Fr)</h2>
     <ul id="days"></ul>
     <label for="pickDay">Anderen Tag bearbeiten (auch Urlaub, Krank, Überstundenabbau)</label>
@@ -70,7 +106,10 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-vi
 
   <section class="panel" id="dayForm" hidden>
     <h2 id="dayTitle">Tag bearbeiten</h2>
-    <label>Netto-Arbeitszeit</label>
+    <label>Stempelzeiten</label>
+    <div id="entList"></div>
+    <button class="btn" id="entAdd" type="button" style="margin-top:8px">+ Zeitraum hinzufügen</button>
+    <label>Netto-Arbeitszeit (wird aus den Zeiten berechnet, nur zum festen Vorgeben ändern)</label>
     <div class="two">
       <div><input type="number" id="dh" min="0" max="24" step="1" placeholder="Std" aria-label="Stunden"></div>
       <div><input type="number" id="dm" min="0" max="59" step="1" placeholder="Min" aria-label="Minuten"></div>
@@ -127,16 +166,20 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-vi
 </main>
 
 <script>
-var KEY="stempeluhr-v2", S={entries:[],auto:true,over:{},mon:{},abs:{}}, SOLL=8*3600000;
+var KEY="stempeluhr-v2", S={entries:[],auto:true,over:{},mon:{},abs:{},carry:0,start:""}, SOLL=8*3600000;
 function ensure(){
   if(!Array.isArray(S.entries))S.entries=[];
   if(!S.over||typeof S.over!=="object")S.over={};
   if(!S.mon||typeof S.mon!=="object")S.mon={};
   if(!S.abs||typeof S.abs!=="object")S.abs={};
+  if(typeof S.carry!=="number")S.carry=0;
+  if(typeof S.start!=="string")S.start="";
   if(S.auto===undefined)S.auto=true;
+  _sd=null;
 }
 function load(){try{var r=localStorage.getItem(KEY);if(r){var d=JSON.parse(r);if(d&&Array.isArray(d.entries))S=d;}}catch(e){}ensure();}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
+var _sd=null;
+function save(){_sd=null;try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
 function $(i){return document.getElementById(i);}
 function pad(n){return (n<10?"0":"")+n;}
 function hm(ms){var m=Math.max(0,Math.round(ms/60000));return Math.floor(m/60)+":"+pad(m%60);}
@@ -151,7 +194,18 @@ function monLabel(key){var p=key.split("-");return new Date(+p[0],+p[1]-1,1).toL
 
 /* Soll: 8 Stunden von Montag bis Freitag */
 var ABS={urlaub:"Urlaub",krank:"Krank",frei:"Überstundenabbau"};
-function sollDay(k){if(S.abs[k]==="urlaub"||S.abs[k]==="krank")return 0;return ((new Date(k).getDay()+6)%7)<5?SOLL:0;}
+function iso(k){var d=new Date(k);return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());}
+function startDay(){
+  if(_sd!==null)return _sd;
+  var s=pd(S.start);
+  if(isNaN(s)){
+    s=dayStart(Date.now());
+    S.entries.forEach(function(e){var k=dayStart(e.start);if(k<s)s=k;});
+    Object.keys(S.over).concat(Object.keys(S.abs)).forEach(function(k){k=+k;if(k<s)s=k;});
+  }
+  return _sd=s;
+}
+function sollDay(k){if(k<startDay())return 0;if(S.abs[k]==="urlaub"||S.abs[k]==="krank")return 0;return ((new Date(k).getDay()+6)%7)<5?SOLL:0;}
 function sollMonth(key,upto){
   var p=key.split("-"),y=+p[0],mo=+p[1]-1,last=new Date(y,mo+1,0).getDate(),lim=upto?dayStart(upto):null,t=0;
   for(var d=1;d<=last;d++){var k=new Date(y,mo,d).getTime();if(lim!==null&&k>lim)break;t+=sollDay(k);}
@@ -191,6 +245,35 @@ function monData(now){
   });
   return m;
 }
+
+/* Überstundenkonto */
+function saldo(now){
+  var md=monData(now),c=mkey(now),t=S.carry||0;
+  Object.keys(md).forEach(function(key){if(key<=c){var v=md[key];t+=v.ist-v.cmp;}});
+  var cm=md[c],today=dayStart(now);
+  if(cm&&!cm.sollManual&&!cm.manual){
+    var so=sollDay(today),w=(dayMap(now)[today]||{work:0}).work;
+    t+=so-Math.min(so,w);
+  }
+  return t;
+}
+$("saldoEd").onclick=function(){
+  var f=$("saldoForm");if(!f.hidden){f.hidden=true;return;}
+  $("cerr").textContent="";
+  var c=S.carry||0,m=Math.round(Math.abs(c)/60000);
+  $("csg").value=c<0?"-1":"1";
+  $("cch").value=c?Math.floor(m/60):"";$("ccm").value=c?m%60:"";
+  $("cstart").value=S.start||iso(startDay());
+  f.hidden=false;
+};
+$("ccancel").onclick=function(){$("saldoForm").hidden=true;};
+$("csave").onclick=function(){
+  var v=parseHM("cch","ccm",9999);
+  if(v!==v){$("cerr").textContent="Bitte Stunden und Minuten (0–59) eingeben.";return;}
+  S.carry=(v||0)*(+$("csg").value);
+  S.start=$("cstart").value||"";
+  save();sigD="";sigM="";$("saldoForm").hidden=true;render();
+};
 
 /* Stempeln */
 $("btn").onclick=function(){
@@ -248,11 +331,53 @@ function render(){
   $("since").textContent=r?(r.pauseStart?"Pause seit "+clk(r.pauseStart)+" Uhr · "+hms(now-r.pauseStart):"seit "+clk(r.start)+" Uhr · Arbeitszeit "+hms(net(r,now))):"";
   $("btn").textContent=r?"Ausstempeln":"Einstempeln";
   $("brk").textContent=r&&r.pauseStart?"Pause beenden":"Pause starten";
+  var sa=saldo(now),se=$("saldo");
+  se.textContent=shm(sa);se.className="saldo"+(Math.round(sa/60000)>0?" pos":Math.round(sa/60000)<0?" neg":"");
+  $("saldoSub").textContent="Seit "+new Date(startDay()).toLocaleDateString("de-DE")+(S.carry?" · inkl. Übertrag "+shm(S.carry):"");
   renderLists(now);
 }
 
 /* Tag bearbeiten */
-var editDay=null,editAbs="",editWork=0;
+var editDay=null,editAbs="",editWork=0,entSig="";
+function tm(k,s){var p=(s||"").split(":");if(p.length!==2)return NaN;var h=+p[0],m=+p[1];if(isNaN(h)||isNaN(m))return NaN;var d=new Date(k);return new Date(d.getFullYear(),d.getMonth(),d.getDate(),h,m).getTime();}
+function field(cls,lbl,inp){var w=document.createElement("div");if(cls)w.className=cls;var s=document.createElement("small");s.textContent=lbl;w.appendChild(s);w.appendChild(inp);return w;}
+function entRow(e){
+  var r=document.createElement("div");r.className="ent";r._e=e;
+  var a=document.createElement("input");a.type="time";a.className="es";a.setAttribute("aria-label","Beginn");
+  var b=document.createElement("input");b.type="time";b.className="ee";b.setAttribute("aria-label","Ende");
+  var c=document.createElement("input");c.type="number";c.min="0";c.max="600";c.step="1";c.className="ep";c.setAttribute("aria-label","Pause in Minuten");
+  if(e){a.value=clk(e.start);if(e.end!==null)b.value=clk(e.end);else b.placeholder="läuft";c.value=Math.round(brk(e,Date.now())/60000);}
+  else c.value="0";
+  var x=document.createElement("button");x.type="button";x.className="ib";x.textContent="✕";x.setAttribute("aria-label","Zeitraum entfernen");
+  x.onclick=function(){r.parentNode.removeChild(r);};
+  r.appendChild(field("","Beginn",a));r.appendChild(field("","Ende",b));r.appendChild(field("p","Pause Min",c));r.appendChild(x);
+  return r;
+}
+function rowsSig(){return Array.prototype.map.call($("entList").children,function(r){return [r.querySelector(".es").value,r.querySelector(".ee").value,r.querySelector(".ep").value,r._e?1:0].join("|");}).join(";");}
+$("entAdd").onclick=function(){$("entList").appendChild(entRow(null));};
+function readRows(){
+  var out=[],err="",running=0;
+  Array.prototype.forEach.call($("entList").children,function(r){
+    if(err)return;
+    var e=r._e,sv=r.querySelector(".es").value,ev=r.querySelector(".ee").value,pv=r.querySelector(".ep").value.trim();
+    if(!sv&&!ev)return;
+    var s=tm(editDay,sv);if(isNaN(s)){err="Bitte bei jedem Zeitraum einen Beginn eintragen.";return;}
+    var run=e&&e.end===null&&!ev,en=null;
+    if(!run){en=tm(editDay,ev);if(isNaN(en)){err="Bitte bei jedem Zeitraum ein Ende eintragen.";return;}if(en<=s){err="Das Ende muss nach dem Beginn liegen.";return;}}
+    else running++;
+    var pm=parseInt(pv||"0",10);if(isNaN(pm)||pm<0){err="Pause bitte in ganzen Minuten eingeben.";return;}
+    if(!run&&pm*60000>=en-s){err="Die Pause ist länger als der Zeitraum.";return;}
+    var keep=e&&Math.round(brk(e,Date.now())/60000)===pm;
+    var o={start:s,end:en,pause:pm*60000,pauseStart:null};
+    if(run){o.pause=keep?(e.pause||0):pm*60000;o.pauseStart=keep?e.pauseStart:null;}
+    else if(keep&&!e.pauseStart)o.pause=e.pause||0;
+    out.push(o);
+  });
+  if(!err){out.sort(function(a,b){return a.start-b.start;});
+    for(var i=1;i<out.length;i++){var pe=out[i-1].end;if(pe===null||out[i].start<pe){err="Die Zeiträume überschneiden sich.";break;}}
+    if(!err&&out.length&&out[out.length-1].end===null&&running&&out[out.length-1].start>Date.now())err="Beginn liegt in der Zukunft.";}
+  return {rows:out,err:err};
+}
 function showAbs(){Array.prototype.forEach.call(document.querySelectorAll("#absRow .btn"),function(b){b.classList.toggle("on",b.getAttribute("data-a")===editAbs&&editAbs!=="");b.setAttribute("aria-pressed",b.getAttribute("data-a")===editAbs?"true":"false");});}
 Array.prototype.forEach.call(document.querySelectorAll("#absRow .btn"),function(b){b.onclick=function(){editAbs=b.getAttribute("data-a");showAbs();};});
 function fill(hid,mid,ms){
@@ -268,6 +393,9 @@ function parseHM(hid,mid,maxH){
 }
 function openDay(k,v){
   editDay=k;$("derr").textContent="";editAbs=S.abs[k]||"";editWork=v.work||0;showAbs();
+  var el=$("entList");el.innerHTML="";
+  S.entries.filter(function(e){return dayStart(e.start)===k;}).sort(function(a,b){return a.start-b.start;}).forEach(function(e){el.appendChild(entRow(e));});
+  entSig=rowsSig();
   $("dayTitle").textContent="Netto-Arbeitszeit am "+dlabel(k);
   fill("dh","dm",v.work);
   $("dayForm").hidden=false;$("dayForm").scrollIntoView({behavior:"smooth",block:"center"});
@@ -279,8 +407,15 @@ $("pickDay").onchange=function(){
 $("dcancel").onclick=function(){$("dayForm").hidden=true;};
 $("dsave").onclick=function(){
   var v=parseHM("dh","dm",24);
-  if(v!==v||(v===null&&!editAbs)){$("derr").textContent="Bitte Stunden (0–24) und Minuten (0–59) eingeben.";return;}
-  if(v!==null&&(S.over[editDay]!==undefined||Math.round(v/60000)!==Math.round(editWork/60000)))S.over[editDay]=v;
+  var changed=rowsSig()!==entSig,rr=readRows();
+  if(changed&&rr.err){$("derr").textContent=rr.err;return;}
+  if(v!==v||(v===null&&!editAbs&&!(changed&&rr.rows.length))){$("derr").textContent="Bitte Stunden (0–24) und Minuten (0–59) eingeben.";return;}
+  var nettoChanged=v!==null&&Math.round(v/60000)!==Math.round(editWork/60000);
+  if(changed){
+    S.entries=S.entries.filter(function(e){return dayStart(e.start)!==editDay;}).concat(rr.rows);
+    S.entries.sort(function(a,b){return a.start-b.start;});
+    if(nettoChanged)S.over[editDay]=v;else delete S.over[editDay];
+  }else if(v!==null&&(S.over[editDay]!==undefined||nettoChanged))S.over[editDay]=v;
   if(editAbs)S.abs[editDay]=editAbs;else delete S.abs[editDay];
   save();$("dayForm").hidden=true;render();
 };
