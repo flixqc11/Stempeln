@@ -227,21 +227,6 @@ background:radial-gradient(70% 50% at 50% 30%,var(--brk-soft),transparent 70%),r
     <p class="empty" id="pmsg" style="margin-top:8px"></p>
   </details>
 
-
-  <details class="panel" id="csvImportBox">
-    <summary>CSV-Daten importieren</summary>
-    <p class="empty" style="margin-top:8px">Unterstützt dein Monatsjournal von Dennree sowie einfache CSV-Dateien mit Datum;Arbeitszeit_Minuten. Importierte Tageswerte erscheinen in der Tages- und Monatsübersicht.</p>
-    <label for="csvFile">CSV-Datei auswählen</label>
-    <input type="file" id="csvFile" accept=".csv,text/csv">
-    <p class="empty" id="csvPreview" style="margin-top:10px">Noch keine Datei ausgewählt.</p>
-    <div class="row">
-      <button class="btn pri" id="csvImport" type="button" disabled>Geprüfte Daten importieren</button>
-      <button class="btn" id="csvCancel" type="button">Abbrechen</button>
-    </div>
-    <p class="err" id="csvErr"></p>
-    <p class="empty" style="margin-top:8px">Vorhandene Tageswerte mit gleichem Datum werden nur nach deiner Bestätigung ersetzt. Der Import bleibt lokal gespeichert bzw. nutzt die vorhandene Synchronisierung der App, falls diese in deiner Claude-Umgebung aktiv ist.</p>
-  </details>
-
   <details class="panel">
     <summary>Sicherung</summary>
     <p class="empty" style="margin-top:8px">Alle Daten als Text speichern (z. B. in Notizen) und bei Bedarf wieder laden.</p>
@@ -278,53 +263,9 @@ function ensure(){
   if(S.auto===undefined)S.auto=true;
   _sd=null;
 }
-/* Zweite lokale Sicherung in IndexedDB (Safari/iPhone) */
-var IDB_NAME="stempeluhr-local-v1",IDB_STORE="state";
-function idbOpen(){
-  return new Promise(function(resolve,reject){
-    if(!window.indexedDB){reject(new Error("IndexedDB nicht verfügbar"));return;}
-    var req=indexedDB.open(IDB_NAME,1);
-    req.onupgradeneeded=function(){var db=req.result;if(!db.objectStoreNames.contains(IDB_STORE))db.createObjectStore(IDB_STORE);};
-    req.onsuccess=function(){resolve(req.result);};req.onerror=function(){reject(req.error);};
-  });
-}
-function idbWrite(json){
-  return idbOpen().then(function(db){return new Promise(function(resolve,reject){
-    var tx=db.transaction(IDB_STORE,"readwrite");tx.objectStore(IDB_STORE).put(json,"app-state");
-    tx.oncomplete=function(){db.close();resolve();};tx.onerror=function(){db.close();reject(tx.error);};
-    tx.onabort=function(){db.close();reject(tx.error);};
-  });});
-}
-function idbRead(){
-  return idbOpen().then(function(db){return new Promise(function(resolve,reject){
-    var tx=db.transaction(IDB_STORE,"readonly"),req=tx.objectStore(IDB_STORE).get("app-state");
-    req.onsuccess=function(){var v=req.result;db.close();try{resolve(v?JSON.parse(v):null);}catch(e){resolve(null);}};
-    req.onerror=function(){db.close();reject(req.error);};
-  });});
-}
-function load(){
-  var found=false;
-  try{var r=localStorage.getItem(KEY);if(r){var d=JSON.parse(r);if(d&&Array.isArray(d.entries)){S=d;found=true;}}}catch(e){}
-  ensure();
-  // IndexedDB is a second local copy; restore it if Safari's localStorage is empty.
-  if(!found && window.indexedDB){
-    idbRead().then(function(d){
-      if(d&&Array.isArray(d.entries)){
-        S=d;ensure();
-        try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}
-        sigD="";sigM="";render();
-      }
-    }).catch(function(){});
-  }
-}
+function load(){try{var r=localStorage.getItem(KEY);if(r){var d=JSON.parse(r);if(d&&Array.isArray(d.entries))S=d;}}catch(e){}ensure();}
 var _sd=null;
-function save(){
-  _sd=null;S.updatedAt=Date.now();
-  var snapshot=JSON.stringify(S);
-  try{localStorage.setItem(KEY,snapshot);}catch(e){}
-  idbWrite(snapshot).catch(function(){});
-  pushCloud();
-}
+function save(){_sd=null;S.updatedAt=Date.now();try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}pushCloud();}
 
 /* Cloud-Speicherung (privat pro Person) */
 var CLOUD=null,cloudBusy=false,cloudDirty=false;
@@ -721,130 +662,6 @@ $("msave").onclick=function(){
   save();$("monForm").hidden=true;render();
 };
 
-
-/* CSV-Import: Monatsjournal und einfache CSV */
-var csvPending=null;
-function csvCells(line,delimiter){
-  var out=[],v="",quoted=false;
-  for(var i=0;i<line.length;i++){
-    var ch=line[i];
-    if(ch==='"'){
-      if(quoted&&line[i+1]==='"'){v+='"';i++;}
-      else quoted=!quoted;
-    }else if(ch===delimiter&&!quoted){out.push(v.trim());v="";}
-    else v+=ch;
-  }
-  out.push(v.trim());return out;
-}
-function csvNum(v){
-  if(v===undefined||v===null||String(v).trim()==="")return null;
-  var n=Number(String(v).replace(/\./g,"").replace(",","."));
-  return isFinite(n)?n:null;
-}
-function parseTimeCsv(v){
-  var m=/^(\d{1,2}):([0-5]\d)$/.exec(String(v||"").trim());
-  return m?Number(m[1])*60+Number(m[2]):null;
-}
-function parseTimeStampCsv(v){
-  var m=/^(\d{2})\.(\d{2})\.(\d{4})/.exec(String(v||"").trim());
-  if(m)return new Date(Number(m[3]),Number(m[2])-1,Number(m[1])).getTime();
-  m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v||"").trim());
-  return m?new Date(Number(m[1]),Number(m[2])-1,Number(m[3])).getTime():NaN;
-}
-function parseMonthlyJournalCsv(text){
-  var lines=text.replace(/^\uFEFF/,"").split(/\r?\n/);
-  var delimiter=(lines[6]||"").split(";").length>1?";":",";
-  var daily={},monthly={},header=null;
-  for(var i=0;i<lines.length;i++){
-    var cells=csvCells(lines[i],delimiter);
-    if(i===6)header=cells;
-    if(cells.length<19)continue;
-    var dateCell=cells[1]||cells[0],stamp=parseTimeStampCsv(dateCell);
-    if(!isFinite(stamp))continue;
-    var total=csvNum(cells[18]),soll=csvNum(cells[16]);
-    if(total===null)continue;
-    var key=dayStart(stamp),date=iso(key);
-    daily[date]={date:date,minutes:Math.round(total)};
-    if(soll!==null)daily[date].sollMinutes=Math.round(soll);
-  }
-  // Report footer: anteilige Monatssumme; Soll and net total in the same columns.
-  for(var j=0;j<lines.length;j++){
-    if(lines[j].toLowerCase().indexOf("anteilige monatssumme")===0){
-      var foot=csvCells(lines[j],delimiter),s=csvNum(foot[16]),a=csvNum(foot[18]);
-      if(a!==null){
-        var found=Object.keys(daily);
-        if(found.length){
-          var mk=found[0].slice(0,7);
-          monthly[mk]={ist:Math.round(a)*60000,soll:s===null?null:Math.round(s)*60000};
-        }
-      }
-    }
-  }
-  return {daily:Object.keys(daily).map(function(k){return daily[k];}),monthly:monthly,format:"Monatsjournal"};
-}
-function parseSimpleCsv(text){
-  var lines=text.replace(/^\uFEFF/,"").split(/\r?\n/).filter(function(x){return x.trim();});
-  if(lines.length<2)throw new Error("Die CSV-Datei enthält keine Datenzeilen.");
-  var delim=(lines[0].match(/;/g)||[]).length>=(lines[0].match(/,/g)||[]).length?";":",";
-  var heads=csvCells(lines[0],delim).map(function(x){return x.toLowerCase().replace(/\s/g,"_");});
-  function ix(names){for(var i=0;i<names.length;i++){var n=heads.indexOf(names[i]);if(n>=0)return n;}return -1;}
-  var di=ix(["datum","date"]),mi=ix(["arbeitszeit_minuten","minuten","minutes"]),si=ix(["beginn","start"]),ei=ix(["ende","end"]),pi=ix(["pause_minuten","pause"]);
-  if(di<0)throw new Error("Spalte Datum nicht gefunden.");
-  var out=[];
-  for(var n=1;n<lines.length;n++){
-    var c=csvCells(lines[n],delim),stamp=parseTimeStampCsv(c[di]);
-    if(!isFinite(stamp))throw new Error("Ungültiges Datum in Zeile "+(n+1)+".");
-    var minutes=null;
-    if(mi>=0)minutes=csvNum(c[mi]);
-    else if(si>=0&&ei>=0){
-      var a=parseTimeCsv(c[si]),b=parseTimeCsv(c[ei]),p=pi>=0?Number(c[pi]||0):0;
-      if(a===null||b===null||!isFinite(p))throw new Error("Ungültige Uhrzeit in Zeile "+(n+1)+".");
-      minutes=(b-a+1440)%1440-p;
-    }else throw new Error("Benötigt wird Arbeitszeit_Minuten oder Beginn, Ende und Pause_Minuten.");
-    if(minutes===null||minutes<0||minutes>1440)throw new Error("Ungültige Arbeitszeit in Zeile "+(n+1)+".");
-    out.push({date:iso(dayStart(stamp)),minutes:Math.round(minutes)});
-  }
-  return {daily:out,monthly:{},format:"CSV"};
-}
-$("csvFile").addEventListener("change",function(ev){
-  csvPending=null;$("csvImport").disabled=true;$("csvErr").textContent="";
-  var f=ev.target.files&&ev.target.files[0];if(!f){$("csvPreview").textContent="Noch keine Datei ausgewählt.";return;}
-  var reader=new FileReader();
-  reader.onload=function(){
-    try{
-      var text=String(reader.result||""),parsed;
-      if(text.indexOf("NtGes")>=0&&text.toLowerCase().indexOf("monatsjournal")>=0)parsed=parseMonthlyJournalCsv(text);
-      else parsed=parseSimpleCsv(text);
-      if(!parsed.daily.length)throw new Error("Keine Tagesgesamtwerte gefunden.");
-      var duplicate=parsed.daily.filter(function(x){return Object.keys(S.over).some(function(k){return iso(+k)===x.date;});}).length;
-      var total=parsed.daily.reduce(function(s,x){return s+x.minutes;},0);
-      csvPending=parsed;
-      $("csvPreview").textContent=parsed.daily.length+" Tageswerte erkannt ("+parsed.format+"). Gesamt: "+hm(total*60000)+". "+duplicate+" Datum/Datumswerte sind bereits vorhanden und würden ersetzt.";
-      $("csvImport").disabled=false;
-    }catch(e){$("csvErr").textContent="Importprüfung fehlgeschlagen: "+e.message;$("csvPreview").textContent="Bitte Datei und Format prüfen.";}
-  };
-  reader.onerror=function(){$("csvErr").textContent="Die Datei konnte nicht gelesen werden.";};
-  reader.readAsText(f);
-});
-$("csvCancel").onclick=function(){csvPending=null;$("csvFile").value="";$("csvPreview").textContent="Noch keine Datei ausgewählt.";$("csvErr").textContent="";$("csvImport").disabled=true;};
-$("csvImport").onclick=function(){
-  if(!csvPending)return;
-  var dup=csvPending.daily.filter(function(x){return Object.keys(S.over).some(function(k){return iso(+k)===x.date;});}).length;
-  if(dup&&!confirm(dup+" bereits vorhandene Tageswerte ersetzen?"))return;
-  csvPending.daily.forEach(function(x){S.over[pd(x.date)]=x.minutes*60000;});
-  Object.keys(csvPending.monthly).forEach(function(k){
-    var v=csvPending.monthly[k];
-    S.mon[k]={ist:v.ist,soll:v.soll};
-  });
-  if(!S.start||csvPending.daily.some(function(x){return x.date<S.start;})){
-    var earliest=csvPending.daily.map(function(x){return x.date;}).sort()[0];
-    if(earliest)S.start=earliest;
-  }
-  save();sigD="";sigM="";render();
-  $("csvPreview").textContent="Import erfolgreich: "+csvPending.daily.length+" Tageswerte wurden übernommen. Die Monatsübersicht wurde aktualisiert.";
-  $("csvErr").textContent="";$("csvImport").disabled=true;csvPending=null;
-};
-
 /* Sicherung */
 $("bkmake").onclick=function(){$("bk").value=JSON.stringify(S);$("bkmsg").textContent="Sicherung erstellt. Tippe auf „Kopieren“ und füge sie z. B. in Notizen ein.";};
 $("bkcopy").onclick=function(){
@@ -865,14 +682,6 @@ $("bkload").onclick=function(){
 };
 
 load();render();setInterval(render,1000);initCloud();
-
-/* Offline-App-Shell: funktioniert nach dem ersten Online-Aufruf auch ohne Netz */
-if("serviceWorker" in navigator && location.protocol!=="file:"){
-  window.addEventListener("load",function(){
-    navigator.serviceWorker.register("./sw.js").catch(function(){});
-  });
-}
-
 </script>
 </body>
 </html>
