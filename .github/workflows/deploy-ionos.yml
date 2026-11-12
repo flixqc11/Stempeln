@@ -1,7 +1,7 @@
 # Lädt die Stempeluhr per SFTP ins Hauptverzeichnis von boredbreak.net (IONOS Webhosting).
 # Es wird nichts auf dem Server gelöscht – /ifkuh/ und alles andere bleibt unangetastet.
 # Benötigte Repository-Secrets: SFTP_HOST, SFTP_USER, SFTP_PASSWORD
-# Optional (Repository-Variable): SFTP_ROOT = Ordner der Domain auf dem Webspace (Standard: /)
+# Optional (Repository-Variable): SFTP_ROOT = Ordner der Domain auf dem Webspace (Standard: /public)
 name: Deploy nach IONOS
 
 on:
@@ -20,7 +20,7 @@ jobs:
       SFTP_HOST: ${{ secrets.SFTP_HOST }}
       SFTP_USER: ${{ secrets.SFTP_USER }}
       LFTP_PASSWORD: ${{ secrets.SFTP_PASSWORD }}
-      SFTP_ROOT: ${{ vars.SFTP_ROOT || '/' }}
+      SFTP_ROOT: ${{ vars.SFTP_ROOT || '/public' }}
     steps:
       - name: Zugangsdaten prüfen
         id: check
