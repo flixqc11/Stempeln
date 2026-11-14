@@ -691,15 +691,15 @@ $("bkload").onclick=function(){
 
 
 /* CSV-Datenaustausch: importiert ausschließlich vollständige, abgeschlossene Zeiträume. */
-function csvEscape(v){var t=String(v==null?"":v);return /[;"\\r\\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t;}
+function csvEscape(v){var t=String(v==null?"":v);return /[;"\r\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t;}
 function csvRows(text){
-  text=text.replace(/^\\uFEFF/,"");var rows=[],row=[],field="",quoted=false;
+  text=text.replace(/^\uFEFF/,"");var rows=[],row=[],field="",quoted=false;
   for(var i=0;i<text.length;i++){var ch=text[i];
     if(quoted){if(ch==='"'&&text[i+1]==='"'){field+='"';i++;}else if(ch==='"')quoted=false;else field+=ch;}
     else if(ch==='"'&&field==="")quoted=true;
-    else if(ch===';'||ch===','||ch==='\\n'||ch==='\\r'){
-      if(ch==='\\r'&&text[i+1]==='\\n')i++;
-      if(ch===';'||ch===','){row.push(field);field="";}
+    else if(ch===';'||ch==='\n'||ch==='\r'){
+      if(ch==='\r'&&text[i+1]==='\n')i++;
+      if(ch===';'){row.push(field);field="";}
       else{row.push(field);if(row.some(function(v){return v.trim()!=="";}))rows.push(row);row=[];field="";}
     }else field+=ch;
   }
@@ -717,7 +717,7 @@ $("csvExport").onclick=function(){
   S.entries.filter(function(e){return e.end!==null;}).sort(function(a,b){return a.start-b.start;}).forEach(function(e){
     lines.push([iso(dayStart(e.start)),clk(e.start),clk(e.end),Math.round(brk(e,e.end)/60000)].map(csvEscape).join(";"));
   });
-  csvDownload("stempeluhr-zeiten.csv","\\uFEFF"+lines.join("\\r\\n"),"text/csv;charset=utf-8");
+  csvDownload("stempeluhr-zeiten.csv","\uFEFF"+lines.join("\r\n"),"text/csv;charset=utf-8");
   $("csvMsg").textContent="CSV mit "+(lines.length-1)+" abgeschlossenen Zeiträumen erstellt.";
 };
 $("csvImport").onclick=function(){
@@ -732,7 +732,7 @@ $("csvImport").onclick=function(){
     var parsed=[],errors=[];
     rows.forEach(function(r,i){
       var date=(r[di]||"").trim(),start=(r[si]||"").trim(),end=(r[ei]||"").trim(),pause=(r[pi]||"0").trim();
-      if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(date)||!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(start)||!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(end)||!/^\\d+$/.test(pause)){errors.push(i+2);return;}
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(start)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(end)||!/^\d+$/.test(pause)){errors.push(i+2);return;}
       var k=pd(date),a=tm(k,start),b=tm(k,end),p=Number(pause)*60000;
       if(iso(k)!==date||!Number.isFinite(a)||!Number.isFinite(b)||b<=a||p>=b-a||p<0){errors.push(i+2);return;}
       parsed.push({start:a,end:b,pause:p,pauseStart:null});
