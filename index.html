@@ -231,7 +231,7 @@ background:radial-gradient(70% 50% at 50% 30%,var(--brk-soft),transparent 70%),r
     <p class="empty" style="margin-top:10px">CSV-Spalten: Datum, Beginn, Ende, Pause (Minuten). Datum als JJJJ-MM-TT, Uhrzeit als HH:MM. Vor dem Import eine Sicherung erstellen.</p>
     <label for="csvFile">CSV-Datei auswählen</label>
     <input id="csvFile" type="file" accept=".csv,text/csv" style="width:100%;margin-top:8px">
-    <div class="row"><button class="btn pri" id="csvImport" type="button">CSV importieren</button><button class="btn" id="csvExport" type="button">CSV exportieren</button><button class="btn" id="pdfExport" type="button">Monatsübersicht als PDF drucken</button></div>
+    <div class="row"><button class="btn pri" id="csvImport" type="button">CSV importieren</button><button class="btn" id="csvExport" type="button">CSV exportieren</button><button class="btn" id="pdfExport" type="button">Monatsübersicht als PDF herunterladen</button></div>
     <p id="csvMsg" role="status" aria-live="polite" class="empty" style="margin-top:10px"></p>
   </details>
   <details class="panel">
@@ -722,7 +722,12 @@ $("csvExport").onclick=function(){
 $("csvImport").onclick=function(){
   var file=$("csvFile").files[0];if(!file){$("csvMsg").textContent="Bitte zuerst eine CSV-Datei auswählen.";return;}
   if(file.size>2*1024*1024){$("csvMsg").textContent="CSV-Datei ist zu groß (maximal 2 MB).";return;}
-  file.text().then(function(txt){
+  new Promise(function(resolve,reject){
+    var reader=new FileReader();
+    reader.onload=function(){resolve(String(reader.result));};
+    reader.onerror=function(){reject(reader.error||Error("Datei konnte nicht gelesen werden."));};
+    reader.readAsText(file,"UTF-8");
+  }).then(function(txt){
     var rows=csvRows(txt);if(rows.length<2)throw Error("Keine Datensätze gefunden.");
     var header=rows.shift().map(function(x){return x.trim().toLowerCase();});
     var ix=function(names){return header.findIndex(function(x){return names.indexOf(x)>=0;});};
@@ -743,12 +748,41 @@ $("csvImport").onclick=function(){
     S.entries=all;save();sigD="";sigM="";render();$("csvMsg").textContent=parsed.length+" Zeiträume erfolgreich importiert.";
   }).catch(function(e){$("csvMsg").textContent="Import fehlgeschlagen: "+e.message;});
 };
+/* Eigenständiger PDF-Download ohne externe Bibliotheken oder Pop-up. */
+function pdfAscii(s){return String(s).replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/Ä/g,"Ae").replace(/Ö/g,"Oe").replace(/Ü/g,"Ue").replace(/ß/g,"ss").replace(/[^\x20-\x7E]/g,"-");}
+function pdfQuote(s){return "("+pdfAscii(s).replace(/\\/g,"\\\\").replace(/\(/g,"\\(").replace(/\)/g,"\\)")+")";}
+function pdfBytes(lines){
+  var objects=[null],pages=[],pageSize=44;
+  function add(value){objects.push(value);return objects.length-1;}
+  var font=add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+  var pagesId=add("");
+  for(var i=0;i<lines.length;i+=pageSize){
+    var section=lines.slice(i,i+pageSize),commands=["BT","/F1 11 Tf","50 790 Td","15 TL"];
+    section.forEach(function(line,j){commands.push((j?"T* ":"")+pdfQuote(line)+" Tj");});
+    commands.push("ET");
+    var stream=commands.join("\n")+"\n";
+    var contents=add("<< /Length "+stream.length+" >>\nstream\n"+stream+"endstream");
+    pages.push(add("<< /Type /Page /Parent "+pagesId+" 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 "+font+" 0 R >> >> /Contents "+contents+" 0 R >>"));
+  }
+  objects[pagesId]="<< /Type /Pages /Kids ["+pages.map(function(id){return id+" 0 R";}).join(" ")+"] /Count "+pages.length+" >>";
+  var catalog=add("<< /Type /Catalog /Pages "+pagesId+" 0 R >>");
+  var out="%PDF-1.4\n",offsets=[0];
+  objects.forEach(function(obj,id){if(id===0)return;offsets[id]=out.length;out+=id+" 0 obj\n"+obj+"\nendobj\n";});
+  var xref=out.length;
+  out+="xref\n0 "+objects.length+"\n0000000000 65535 f \n";
+  for(var n=1;n<objects.length;n++)out+=("0000000000"+offsets[n]).slice(-10)+" 00000 n \n";
+  out+="trailer\n<< /Size "+objects.length+" /Root "+catalog+" 0 R >>\nstartxref\n"+xref+"\n%%EOF\n";
+  return new Uint8Array(Array.prototype.map.call(out,function(c){return c.charCodeAt(0);}));
+}
 $("pdfExport").onclick=function(){
-  var months=monData(Date.now()),keys=Object.keys(months).sort(),lines=keys.map(function(k){var m=months[k];return monLabel(k)+": Ist "+hm(m.ist)+", Soll "+hm(m.soll)+", Differenz "+shm(m.ist-m.soll);});
-  var w=window.open("","_blank");if(!w){$("csvMsg").textContent="Pop-up blockiert. Bitte Pop-ups für den PDF-Druck erlauben.";return;}
-  var doc=w.document;doc.title="Stempeluhr Monatsübersicht";var h=doc.createElement("h1");h.textContent="Stempeluhr – Monatsübersicht";doc.body.appendChild(h);
-  lines.forEach(function(line){var p=doc.createElement("p");p.textContent=line;doc.body.appendChild(p);});
-  var p=doc.createElement("p");p.textContent="Im Druckdialog als PDF sichern.";doc.body.appendChild(p);w.focus();w.print();
+  try{
+    var months=monData(Date.now()),keys=Object.keys(months).sort();
+    var lines=["Stempeluhr - Monatsuebersicht","Erstellt: "+new Date().toLocaleDateString("de-DE"),""];
+    keys.forEach(function(k){var m=months[k];lines.push(monLabel(k)+" | Ist: "+hm(m.ist)+" | Soll: "+hm(m.soll)+" | Differenz: "+shm(m.ist-m.soll));});
+    if(!keys.length)lines.push("Noch keine Monatsdaten vorhanden.");
+    csvDownload("stempeluhr-monatsuebersicht.pdf",pdfBytes(lines),"application/pdf");
+    $("csvMsg").textContent="PDF mit "+keys.length+" Monaten erstellt.";
+  }catch(e){$("csvMsg").textContent="PDF-Export fehlgeschlagen: "+e.message;}
 };
 
 load();render();setInterval(render,1000);initCloud();
