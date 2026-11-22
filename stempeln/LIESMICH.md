@@ -4,8 +4,9 @@ Gebündelte React-Version der Zeiterfassung. Der ursprüngliche Quellcode liegt 
 Korrekturen wurden direkt im Build vorgenommen.
 
 ## Deploy
-Den Inhalt dieses Ordners nach `/stempeln/` auf dem Webspace hochladen (inkl. Ordner `fonts/`).
-Der automatische Deploy-Workflow dieses Repos betrifft **nicht** diesen Ordner.
+Bei einem Push auf `main` lädt der Workflow `.github/workflows/deploy-ionos.yml` diesen Ordner per SFTP
+nach `/boredbreak-weiche/stempeln/` (Domain-Ordner von boredbreak.net). Anderes Ziel: Repository-Variable
+`STEMPELN_DIR` setzen. Manuell: Inhalt inkl. `fonts/` dorthin hochladen.
 
 Nicht mehr benötigte Altdateien auf dem Server (können gelöscht werden):
 `importexport.js`, `feiertage.js`, `abgleich.js`, `auswertung.js`, `beispiel-zeiterfassung.csv`.
