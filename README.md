@@ -15,7 +15,6 @@ Sicherung per JSON-Export und -Import in der App.
 | `stempeln/sw.js` | Service Worker für Offline-Nutzung (Cache-Version bei Änderungen erhöhen) |
 | `stempeln/manifest.webmanifest`, `icon-*.png` | Installation als App (Homescreen) |
 | `stempeln/fonts/` | Schrift DM Sans (lokal, wegen Content-Security-Policy keine eingebetteten Schriften) |
-| `archiv/stempeluhr/` | Ältere Vanilla-JS-Version „Stempeluhr“ – nicht mehr veröffentlicht, nur zum Nachschlagen |
 | `.github/workflows/deploy.yml` | Automatischer Upload per SFTP |
 
 ## Veröffentlichen
@@ -30,6 +29,8 @@ Manuell starten: GitHub → *Actions* → *Deploy* → *Run workflow*.
 
 ## Hinweise zur App
 
+- Die frühere Vanilla-JS-Version „Stempeluhr“ ist nur noch in der Git-Historie enthalten
+  (Ordner `archiv/stempeluhr/`, letzter Stand in Commit `0132817`).
 - Der ursprüngliche React-Quellcode liegt nicht in diesem Repo; Änderungen erfolgen direkt in
   `stempeln/index.html`. Nach Änderungen die Cache-Version in `stempeln/sw.js` erhöhen.
 - Die Server-CSP erlaubt nur Inhalte von derselben Domain (`default-src 'self'`) –
