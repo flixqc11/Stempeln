@@ -1,0 +1,68 @@
+# Lädt die Stempeln-App (Ordner stempeln/) per SFTP nach boredbreak.net/stempeln/ (IONOS Webhosting).
+#
+# Es wird nichts auf dem Server gelöscht; andere Ordner (Weiche, Familien-Cockpit, …) bleiben unangetastet.
+# Benötigte Repository-Secrets:   SFTP_HOST, SFTP_USER, SFTP_PASSWORD
+# Optionale Repository-Variable:  STEMPELN_DIR (Standard: /boredbreak-weiche/stempeln)
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "stempeln/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-ionos
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SFTP_HOST: ${{ secrets.SFTP_HOST }}
+      SFTP_USER: ${{ secrets.SFTP_USER }}
+      LFTP_PASSWORD: ${{ secrets.SFTP_PASSWORD }}
+      TARGET: ${{ vars.STEMPELN_DIR || '/boredbreak-weiche/stempeln' }}
+    steps:
+      - name: Zugangsdaten prüfen
+        id: check
+        run: |
+          if [ -z "$SFTP_HOST" ] || [ -z "$SFTP_USER" ] || [ -z "$LFTP_PASSWORD" ]; then
+            echo "::warning::SFTP-Secrets fehlen – Deploy übersprungen."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v5
+        if: steps.check.outputs.ok == 'true'
+
+      - name: lftp installieren
+        if: steps.check.outputs.ok == 'true'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+
+      - name: Zielordner prüfen
+        if: steps.check.outputs.ok == 'true'
+        run: |
+          # Schutz vor falschem Pfad: im Ziel muss bereits die Stempeln-App liegen.
+          lftp -c "set sftp:auto-confirm yes; set net:max-retries 2; set net:timeout 30;
+            open --env-password -u \"$SFTP_USER\" sftp://$SFTP_HOST;
+            cat \"${TARGET%/}/index.html\"" | grep -q "<title>Stempeln" || {
+            echo "::error::Keine Stempeln-App unter ${TARGET%/}/index.html gefunden – bitte STEMPELN_DIR prüfen."; exit 1; }
+
+      - name: Hochladen
+        if: steps.check.outputs.ok == 'true'
+        run: |
+          lftp -c "set sftp:auto-confirm yes; set net:max-retries 2; set net:timeout 30;
+            open --env-password -u \"$SFTP_USER\" sftp://$SFTP_HOST;
+            mirror --reverse --verbose --parallel=4 ./stempeln/ \"${TARGET%/}/\""
+
+      - name: Live-Seite prüfen
+        if: steps.check.outputs.ok == 'true'
+        run: |
+          sleep 5
+          curl -fsS https://boredbreak.net/stempeln/ | grep -q "<title>Stempeln" \
+            && echo "boredbreak.net/stempeln/ antwortet mit der Stempeln-App." \
+            || { echo "::error::boredbreak.net/stempeln/ liefert nicht die Stempeln-App."; exit 1; }
