@@ -1,11 +1,11 @@
 {
- "name": "Stempeluhr",
- "short_name": "Stempeluhr",
+ "name": "Stempeln",
+ "short_name": "Stempeln",
  "start_url": "./",
  "scope": "./",
  "display": "standalone",
- "background_color": "#eef3fb",
- "theme_color": "#eef3fb",
+ "background_color": "#eef0fa",
+ "theme_color": "#c2cee7",
  "lang": "de",
  "icons": [
   {
@@ -17,7 +17,14 @@
    "src": "icon-512.png",
    "sizes": "512x512",
    "type": "image/png",
-   "purpose": "any maskable"
+   "purpose": "any"
+  },
+  {
+   "src": "icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "maskable"
   }
- ]
+ ],
+ "description": "Arbeitszeiten erfassen, Pausen einlegen und den Tag im Blick behalten."
 }

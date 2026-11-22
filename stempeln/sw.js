@@ -2,8 +2,8 @@
  * API-Antworten und Dateien anderer Apps werden niemals gespeichert. */
 var SCOPE = new URL(self.registration.scope);
 var PREFIX = 'stempeluhr:' + SCOPE.pathname + ':';
-var CACHE = PREFIX + 'v11';
-var CORE = ["./", "importexport.js?v=7", "feiertage.js?v=1", "abgleich.js?v=1", "auswertung.js?v=3", "beispiel-zeiterfassung.csv", "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"];
+var CACHE = PREFIX + 'v12';
+var CORE = ["./", "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png", "fonts/dm-sans-latin.woff2", "fonts/dm-sans-latin-ext.woff2"];
 var FILES = CORE.map(function (p) { return new URL(p, SCOPE).href; });
 
 self.addEventListener('install', function (e) {
